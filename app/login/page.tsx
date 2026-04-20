@@ -1,9 +1,12 @@
 'use client'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { useState, useEffect } from 'react'
+import { createClient } from '@supabase/supabase-js' 
+import { useState } from 'react'
 
 export default function WorkoutDashboard() {
-  const supabase = createClientComponentClient()
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const [type, setType] = useState('Strength')
   const [rpe, setRpe] = useState(7)
   const [loading, setLoading] = useState(false)
