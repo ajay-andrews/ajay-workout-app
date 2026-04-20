@@ -1,72 +1,98 @@
 'use client'
-import { createClient } from '@supabase/supabase-js' 
+import { createClient } from '@supabase/supabase-js'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 
-export default function WorkoutDashboard() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  const [type, setType] = useState('Strength')
-  const [rpe, setRpe] = useState(7)
+// Initialize the standard client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const router = useRouter()
 
-  const logWorkout = async () => {
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
     setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (!user) {
-      alert("Please login first!")
-      return
-    }
+    setMessage('')
 
-    const { error } = await supabase.from('workouts').insert({
-      user_id: user.id,
-      type: type,
-      overall_rpe: rpe,
-      intensity_level: rpe > 8 ? 'High' : rpe > 4 ? 'Medium' : 'Low',
-      duration_minutes: 60 // Default for now
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     })
 
+    if (error) {
+      setMessage(`Error: ${error.message}`)
+      setLoading(false)
+    } else {
+      setMessage('Success! Redirecting...')
+      router.push('/')
+    }
+  }
+
+  const handleSignUp = async () => {
+    setLoading(true)
+    setMessage('')
+    
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    })
+
+    if (error) setMessage(`Error: ${error.message}`)
+    else setMessage('Check your email for the confirmation link!')
     setLoading(false)
-    if (error) alert(error.message)
-    else alert("Session Logged. STAY HARD.")
   }
 
   return (
-    <main className="p-6 bg-slate-900 min-h-screen text-white font-sans">
-      <h1 className="text-3xl font-black italic mb-8 border-b-4 border-blue-600 inline-block">LOG SESSION</h1>
-      
-      <div className="space-y-6 max-w-md">
-        <div>
-          <label className="block text-sm font-bold mb-2">WORKOUT TYPE</label>
-          <select 
-            className="w-full bg-slate-800 p-4 rounded border border-slate-700"
-            onChange={(e) => setType(e.target.value)}
-          >
-            <option>Strength</option>
-            <option>Cardio</option>
-            <option>Mobility</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-bold mb-2">RPE (1-10)</label>
+    <main className="p-8 bg-slate-950 min-h-screen text-slate-100 font-sans flex flex-col items-center justify-center">
+      <div className="w-full max-w-md bg-slate-900 p-8 rounded-2xl border border-slate-800 shadow-2xl">
+        <h1 className="text-3xl font-black italic mb-8 text-blue-500">ACCESS GRANTED</h1>
+        
+        <form onSubmit={handleLogin} className="space-y-4">
           <input 
-            type="range" min="1" max="10" 
-            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-            onChange={(e) => setRpe(parseInt(e.target.value))}
+            type="email" 
+            placeholder="Email" 
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full bg-slate-800 p-4 rounded-xl border border-slate-700 outline-none focus:ring-2 focus:ring-blue-600"
+            required
           />
-          <div className="text-center font-black text-2xl mt-2">{rpe}</div>
-        </div>
+          <input 
+            type="password" 
+            placeholder="Password" 
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full bg-slate-800 p-4 rounded-xl border border-slate-700 outline-none focus:ring-2 focus:ring-blue-600"
+            required
+          />
+          
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl transition-all"
+          >
+            {loading ? 'PROCESSING...' : 'LOGIN'}
+          </button>
+        </form>
 
         <button 
-          onClick={logWorkout}
-          disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl transition-all shadow-lg shadow-blue-900/20"
+          onClick={handleSignUp}
+          className="w-full mt-4 text-slate-500 font-bold hover:text-slate-300 transition-all text-sm"
         >
-          {loading ? 'SYNCING...' : 'FINISH WORKOUT'}
+          NEW ATHLETE? SIGN UP
         </button>
+
+        {message && (
+          <p className={`text-center font-bold text-sm mt-6 ${message.includes('Error') ? 'text-red-400' : 'text-green-400'}`}>
+            {message}
+          </p>
+        )}
       </div>
     </main>
   )
