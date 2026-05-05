@@ -46,10 +46,6 @@ export default function FoundationPage() {
           ← Back to Hub
         </Link>
 
-        <h1 className="text-3xl font-black italic mb-10 border-b border-slate-800 pb-2 uppercase tracking-tighter">
-          Foundation
-        </h1>
-
         {loading ? (
           <div className="flex-grow flex items-center justify-center py-20">
             <p className="text-slate-500 font-mono text-[10px] animate-pulse uppercase tracking-[0.4em]">Accessing Archive...</p>
