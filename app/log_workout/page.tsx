@@ -140,7 +140,7 @@ export default function LogWorkoutPage() {
     }))
 
     await supabase.from('workout_logs').insert(logsToInsert)
-    window.location.href = '/previous_workouts'
+    window.location.href = '/workout_history'
   }
 
   if (view === 'finalize') {
