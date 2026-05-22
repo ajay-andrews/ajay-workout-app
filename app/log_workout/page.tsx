@@ -2,8 +2,12 @@
 import { supabase } from '@/lib/supabase'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 export default function LogWorkoutPage() {
+  const searchParams = useSearchParams()
+  const targetDateParam = searchParams.get('date') 
+
   const [view, setView] = useState<'entry' | 'finalize'>('entry')
   const [exercises, setExercises] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -20,7 +24,7 @@ export default function LogWorkoutPage() {
 
   const [workoutMeta, setWorkoutMeta] = useState({
     type: 'Weight',
-    rpe: '5',
+    rpe: 5,
     duration_minutes: ''
   })
 
@@ -44,7 +48,6 @@ export default function LogWorkoutPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // --- SORTING & GROUPING LOGIC ---
   const getGroupedData = () => {
     const filtered = exercises.filter(ex => 
       ex.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -77,7 +80,6 @@ export default function LogWorkoutPage() {
       !['Cardio', 'Circuit', 'Relax', 'Miscellaneous'].includes(g)
     ).sort()
 
-    // Explicit order: Weight Categories -> Cardio -> Circuit -> Relax
     const finalSortOrder = [...weightGroups, 'Cardio', 'Circuit', 'Relax', 'Miscellaneous']
     
     return finalSortOrder.filter(group => groups[group])
@@ -120,13 +122,18 @@ export default function LogWorkoutPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
+    const chosenTimestamp = targetDateParam 
+      ? new Date(`${targetDateParam}T12:00:00`).toISOString() 
+      : new Date().toISOString()
+
     const { data: workout } = await supabase
       .from('workouts')
       .insert({
         user_id: user.id,
         type: workoutMeta.type,
-        overall_rpe: parseInt(workoutMeta.rpe),
-        duration_minutes: parseInt(workoutMeta.duration_minutes) || 0
+        overall_rpe: workoutMeta.rpe,
+        duration_minutes: parseInt(workoutMeta.duration_minutes) || 0,
+        created_at: chosenTimestamp
       })
       .select().single()
 
@@ -136,7 +143,8 @@ export default function LogWorkoutPage() {
       sets: log.sets ? parseInt(log.sets) : null,
       reps: log.reps ? parseInt(log.reps) : null,
       weight: log.weight ? parseFloat(log.weight) : null,
-      duration_minutes: log.duration ? parseInt(log.duration) : null 
+      duration_minutes: log.duration ? parseInt(log.duration) : null,
+      created_at: chosenTimestamp
     }))
 
     await supabase.from('workout_logs').insert(logsToInsert)
@@ -150,7 +158,9 @@ export default function LogWorkoutPage() {
           <button onClick={() => setView('entry')} className="text-blue-500 font-black text-[10px] uppercase tracking-widest text-left active:scale-95 transition-all">
             ← Back to Logging
           </button>
+          
           <h1 className="text-3xl font-black italic uppercase tracking-tighter text-center text-blue-500 animate-pulse">Summary</h1>
+          
           <div className="bg-slate-900/30 border border-slate-800 p-8 rounded-[2.5rem] space-y-8 shadow-2xl">
             <div className="grid grid-cols-2 gap-2">
               {['Weight', 'Cardio', 'Circuit', 'Relax'].map(t => (
@@ -159,10 +169,44 @@ export default function LogWorkoutPage() {
                 </button>
               ))}
             </div>
-            <div className="text-center border-y border-slate-800/50 py-6">
+
+            <div className="text-center border-t border-slate-800/50 pt-6">
               <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block tracking-widest">Total Duration (Mins)</label>
               <input type="number" value={workoutMeta.duration_minutes} onChange={(e) => setWorkoutMeta({...workoutMeta, duration_minutes: e.target.value})} placeholder="00" className="bg-transparent text-7xl font-black text-center outline-none text-blue-500 w-full" />
             </div>
+
+            <div className="border-t border-slate-800/50 pt-6">
+              <div className="flex justify-between items-center mb-3 px-1">
+                <label className="text-[10px] font-black uppercase text-slate-600 tracking-widest">Perceived Exertion (RPE)</label>
+                <span className="text-sm font-black text-blue-500 italic">@ RPE {workoutMeta.rpe}</span>
+              </div>
+              
+              <div className="grid grid-cols-5 gap-1.5">
+                {[...Array(10)].map((_, i) => {
+                  const rpeVal = i + 1
+                  const isSelected = workoutMeta.rpe === rpeVal
+                  return (
+                    <button
+                      type="button"
+                      key={rpeVal}
+                      onClick={() => setWorkoutMeta({ ...workoutMeta, rpe: rpeVal })}
+                      className={`py-3 font-mono font-black text-xs rounded-lg transition-all border ${
+                        isSelected 
+                          ? 'bg-blue-600 border-blue-400 text-white shadow-md' 
+                          : 'bg-black border-slate-900 text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      {rpeVal}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex justify-between text-[8px] uppercase font-black tracking-wider text-slate-700 mt-2 px-1">
+                <span>Warmup</span>
+                <span>Max Effort</span>
+              </div>
+            </div>
+
             <button onClick={commitWorkout} disabled={isSubmitting} className="w-full bg-white text-black font-black py-6 rounded-[2rem] uppercase italic text-2xl tracking-tighter shadow-2xl active:scale-95 transition-all">
               {isSubmitting ? 'Syncing...' : 'End Workout'}
             </button>
@@ -177,13 +221,15 @@ export default function LogWorkoutPage() {
       <div className="w-full max-w-md flex flex-col pt-4">
         
         <div className="mb-8">
-          <Link href="/" className="text-blue-500 font-black text-[10px] uppercase tracking-widest hover:text-blue-400 inline-block active:scale-95 transition-all">
-            ← Back to Hub
+          <Link href="/workout_history" className="text-blue-500 font-black text-[10px] uppercase tracking-widest hover:text-blue-400 inline-block active:scale-95 transition-all">
+            ← Back to History
           </Link>
         </div>
         
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-2xl font-black italic uppercase tracking-tighter">Log Workout</h1>
+          <h1 className="text-2xl font-black italic uppercase tracking-tighter">
+            {targetDateParam ? `Log for ${targetDateParam}` : 'Log Workout'}
+          </h1>
           {sessionLogs.length > 0 && (
             <div className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase italic">
               {sessionLogs.length} Move{sessionLogs.length > 1 ? 's' : ''}
@@ -192,8 +238,6 @@ export default function LogWorkoutPage() {
         </div>
 
         <div className="space-y-4">
-          
-          {/* CUSTOM SEARCHABLE DROPDOWN */}
           <div className="relative" ref={dropdownRef}>
             <div 
               onClick={() => setIsOpen(!isOpen)}

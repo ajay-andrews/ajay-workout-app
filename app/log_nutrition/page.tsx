@@ -11,7 +11,6 @@ export default function LogNutrition() {
   const [quickCalories, setQuickCalories] = useState('')
   const [scalingFood, setScalingFood] = useState<any | null>(null)
   
-  // Fix for Hydration: Store the formatted date in state
   const [formattedDate, setFormattedDate] = useState('')
   
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -22,7 +21,6 @@ export default function LogNutrition() {
   }, 0)
 
   useEffect(() => {
-    // Set the date only after mounting to the client
     const display = new Date().toLocaleDateString('en-US', { 
       weekday: 'long', 
       month: 'long', 
@@ -45,6 +43,7 @@ export default function LogNutrition() {
         .select('*')
         .eq('user_id', user.id)
         .eq('log_date', today)
+        .order('created_at', { ascending: true }) // Requirements: Chronological timeline sort
     ])
 
     if (foodsRes.data) setFoods(foodsRes.data)
@@ -89,14 +88,26 @@ export default function LogNutrition() {
     fetchData()
   }
 
-  const handlePressStart = (food: any) => {
+  // --- MOBILE PREVENT DUPLICATION TIMER UTILITIES ---
+  const handlePressStart = (e: React.MouseEvent | React.TouchEvent, food: any) => {
+    // Intercept touch events to drop simulated downstream desktop mouse fires
+    if (e.type === 'touchstart') {
+      if (e.cancelable) e.preventDefault();
+    }
+    
+    if (timerRef.current) clearTimeout(timerRef.current)
+    
     timerRef.current = setTimeout(() => {
       setScalingFood(food)
       timerRef.current = null
     }, 500)
   }
 
-  const handlePressEnd = (food: any) => {
+  const handlePressEnd = (e: React.MouseEvent | React.TouchEvent, food: any) => {
+    if (e.type === 'touchend') {
+      if (e.cancelable) e.preventDefault();
+    }
+
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
@@ -107,6 +118,7 @@ export default function LogNutrition() {
   const commonFoods = foods.filter(f => f.common === true)
   const filteredFoods = foods.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
 
+  // Reusable component for Food Buttons
   const FoodItem = ({ food }: { food: any }) => (
     <div className="relative flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl p-3">
       <div className="flex-1 min-w-0">
@@ -117,10 +129,10 @@ export default function LogNutrition() {
         <p className="text-blue-500 font-black text-[10px] mt-0.5">{food.calories} kcal</p>
       </div>
       <button 
-        onMouseDown={() => handlePressStart(food)}
-        onMouseUp={() => handlePressEnd(food)}
-        onTouchStart={() => handlePressStart(food)}
-        onTouchEnd={() => handlePressEnd(food)}
+        onMouseDown={(e) => handlePressStart(e, food)}
+        onMouseUp={(e) => handlePressEnd(e, food)}
+        onTouchStart={(e) => handlePressStart(e, food)}
+        onTouchEnd={(e) => handlePressEnd(e, food)}
         className="ml-3 w-9 h-9 bg-slate-800 rounded-lg flex items-center justify-center active:bg-blue-600 active:scale-90 transition-all select-none"
       >
         <span className="text-xl font-bold text-slate-200">+</span>
@@ -129,6 +141,9 @@ export default function LogNutrition() {
   )
 
   if (loading) return <div className="bg-black min-h-screen p-6 text-slate-500 font-black italic uppercase">Loading...</div>
+
+  // Running sum reference tracking variable
+  let runningCumulativeSum = 0
 
   return (
     <div className="bg-black min-h-screen text-slate-100 p-6 font-sans pb-32">
@@ -142,7 +157,6 @@ export default function LogNutrition() {
             <div className="w-10" />
           </div>
           <div className="text-center">
-            {/* Display the state-based formattedDate */}
             <p className="text-[10px] font-black text-slate-600 tracking-[0.2em] border-y border-slate-900/50 py-2">
               {formattedDate || 'LOADING DATE...'}
             </p>
@@ -185,7 +199,7 @@ export default function LogNutrition() {
           <div className="relative">
             <input 
               type="text"
-              placeholder="E.G. CHICKEN CURRY..."
+              placeholder="E.G. CHEESE..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-900 border border-slate-800 rounded-xl py-3 px-4 font-bold text-xs focus:border-blue-500 outline-none uppercase placeholder:text-slate-700"
@@ -214,29 +228,48 @@ export default function LogNutrition() {
           </div>
         </div>
 
-        {/* 4. TODAY'S RUNNING LIST */}
+        {/* 4. TODAY'S RUNNING LIST (OLD TO NEW + CUMULATIVE STATS) */}
         <div className="border-t border-slate-900 pt-6">
           <label className="text-[10px] font-black uppercase text-slate-600 mb-4 block tracking-widest">Today's Intake</label>
           <div className="space-y-2">
             {dailyLogs.length === 0 ? (
               <p className="text-[10px] text-slate-700 uppercase italic font-bold text-center py-4">No entries yet</p>
             ) : (
-              dailyLogs.map(log => (
-                <div key={log.id} className="flex items-center justify-between bg-slate-900/30 p-3 rounded-xl border border-slate-900/50 group">
-                  <div className="min-w-0">
-                    <p className="font-bold text-[11px] uppercase truncate text-slate-300">{log.food_name_snapshot}</p>
-                    <p className="text-[9px] text-slate-500 font-black uppercase">
-                      {log.amount_consumed}x • {Math.round(log.calories_snapshot * log.amount_consumed)} kcal
-                    </p>
+              dailyLogs.map(log => {
+                const entryCalories = log.calories_snapshot * log.amount_consumed
+                runningCumulativeSum += entryCalories
+                const targetPercentage = Math.round((runningCumulativeSum / target) * 100)
+
+                return (
+                  <div key={log.id} className="flex items-center justify-between bg-slate-900/30 p-3 rounded-xl border border-slate-900/50 group">
+                    <div className="min-w-0 flex-1 pr-2">
+                      <p className="font-bold text-[11px] uppercase truncate text-slate-300">{log.food_name_snapshot}</p>
+                      <p className="text-[9px] text-slate-500 font-black uppercase">
+                        {log.amount_consumed}x • {Math.round(entryCalories)} kcal
+                      </p>
+                    </div>
+                    
+                    {/* RUNNING CUMULATIVE CALCULATOR METRICS DISPLAY */}
+                    <div className="text-right flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="font-mono font-black text-[10px] text-blue-500 leading-none">
+                          {Math.round(runningCumulativeSum)} kcal
+                        </p>
+                        <p className="font-mono text-[8px] text-slate-600 font-bold uppercase mt-0.5 leading-none">
+                          {targetPercentage}% Target
+                        </p>
+                      </div>
+                      
+                      <button 
+                        onClick={() => deleteLog(log.id)} 
+                        className="text-slate-700 hover:text-red-500 font-black px-1 text-xl transition-colors"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
-                  <button 
-                    onClick={() => deleteLog(log.id)} 
-                    className="text-slate-700 hover:text-red-500 font-black px-2 text-xl transition-colors"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         </div>
