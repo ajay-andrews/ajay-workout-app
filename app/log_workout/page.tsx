@@ -1,10 +1,11 @@
 'use client'
 import { supabase } from '@/lib/supabase'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
-export default function LogWorkoutPage() {
+// 1. Move the core engine into a separate sub-component
+function LogWorkoutForm() {
   const searchParams = useSearchParams()
   const targetDateParam = searchParams.get('date') 
 
@@ -343,5 +344,18 @@ export default function LogWorkoutPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// 2. Export the component safely wrapped in a Suspense bundle boundary
+export default function LogWorkoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="bg-black min-h-screen p-6 text-slate-500 font-black italic uppercase flex items-center justify-center">
+        Loading Session Config...
+      </div>
+    }>
+      <LogWorkoutForm />
+    </Suspense>
   )
 }
