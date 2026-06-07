@@ -77,7 +77,6 @@ function WorkoutHistoryPageContent() {
           const ex = log.exercises
           if (!ex) return
           
-          // REMOVED: ex.type === 'weight' filter restriction so all exercise types load
           if (ex.focus === true) {
             const normalizedName = (ex.name || 'Unnamed Movement').trim()
             if (!normalizedName) return
@@ -207,7 +206,7 @@ function WorkoutHistoryPageContent() {
     target.setHours(0,0,0,0)
     
     const diffTime = today.getTime() - target.getTime()
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24 ?? 1))
     
     if (diffDays === 0) return 'today'
     if (diffDays === 1) return '1 day ago'
@@ -220,17 +219,22 @@ function WorkoutHistoryPageContent() {
     <div className="bg-black min-h-screen w-full flex justify-center text-slate-100 font-sans">
       <main className="w-full max-w-md p-4 sm:p-6 flex flex-col min-h-screen">
         
-        {/* HEADER CONTENT */}
+        {/* LINE-STRATIFIED HEADER LAYOUT */}
         <div className="flex flex-col gap-4 mt-4 mb-6">
-          <div className="flex justify-between items-center">
-            <Link href="/" className="text-blue-500 font-black text-[10px] uppercase tracking-widest hover:text-blue-400 transition-colors">
+          {/* Line 1: Hub Back Button Only */}
+          <div>
+            <Link href="/" className="text-blue-500 font-black text-[10px] uppercase tracking-widest hover:text-blue-400 transition-colors inline-block">
               ← BACK TO HUB
             </Link>
-            <h1 className="text-xl font-black italic uppercase tracking-tighter">WORKOUT HISTORY</h1>
-            <div className="w-16" />
           </div>
           
-          <div className="flex bg-slate-900 rounded-lg p-0.5 border border-slate-800 self-end">
+          {/* Line 2: Workout History Heading Title */}
+          <div>
+            <h1 className="text-xl font-black italic uppercase tracking-tighter">WORKOUT HISTORY</h1>
+          </div>
+          
+          {/* Line 3: Navigation Segmented Tabs */}
+          <div className="flex bg-slate-900 rounded-lg p-0.5 border border-slate-800 self-start">
             {(['calendar', 'stats'] as const).map((tab) => (
               <button
                 key={tab}
@@ -243,6 +247,7 @@ function WorkoutHistoryPageContent() {
           </div>
         </div>
 
+        {/* Line 4+: Content Data Panels */}
         {loading ? (
           <div className="flex-grow flex items-center justify-center py-20">
             <p className="text-slate-500 font-mono text-[10px] animate-pulse uppercase tracking-[0.4em]">Accessing Archive...</p>
@@ -352,7 +357,7 @@ function WorkoutHistoryPageContent() {
             )}
           </div>
         ) : (
-          /* FOCUS MOVEMENTS TAB — ALL TYPES ALLOWED */
+          /* FOCUS MOVEMENTS TAB */
           <div className="bg-slate-900/10 border border-slate-900 rounded-[2rem] p-6 shadow-2xl">
             <h2 className="text-base font-black italic uppercase text-blue-500 tracking-tight mb-4">Focus Movements</h2>
             
