@@ -206,7 +206,7 @@ function WorkoutHistoryPageContent() {
     target.setHours(0,0,0,0)
     
     const diffTime = today.getTime() - target.getTime()
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24 ?? 1))
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
     
     if (diffDays === 0) return 'today'
     if (diffDays === 1) return '1 day ago'
