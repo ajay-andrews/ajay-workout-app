@@ -14,6 +14,7 @@ function WeightPageContent() {
 
   const [loading, setLoading] = useState(true)
   const [logs, setLogs] = useState<any[]>([])
+  const [allLogs, setAllLogs] = useState<any[]>([])
   const [unit, setUnit] = useState<'kg' | 'lb'>('kg')
   const [range, setRange] = useState<'7D' | '30D' | '6M'>('7D')
   const [activeTab, setActiveTab] = useState<'chart' | 'stats'>('chart')
@@ -21,29 +22,27 @@ function WeightPageContent() {
   const [isSaving, setIsSaving] = useState(false)
 
   const TARGET_KG = 69
+  const TARGET_LB = 69 * 2.20462
 
   useEffect(() => {
     fetchWeightLogs()
-  }, [range])
+  }, [])
 
   const fetchWeightLogs = async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    let dateLimit = new Date()
-    if (range === '7D') dateLimit.setDate(dateLimit.getDate() - 7)
-    else if (range === '30D') dateLimit.setDate(dateLimit.getDate() - 30)
-    else if (range === '6M') dateLimit.setMonth(dateLimit.getMonth() - 6)
-
     const { data, error } = await supabase
       .from('weight_logs')
       .select('*')
       .eq('user_id', user.id)
-      .gte('log_date', dateLimit.toISOString().split('T')[0])
       .order('log_date', { ascending: true })
 
-    if (!error && data) setLogs(data)
+    if (!error && data) {
+      setAllLogs(data)
+      setLogs(data)
+    }
     setLoading(false)
   }
 
@@ -78,40 +77,81 @@ function WeightPageContent() {
     return weight
   }
 
-  const convertedValues = logs.map(l => convertToDisplay(l.weight, l.unit))
+  const getFilteredChartLogs = () => {
+    let dateLimit = new Date()
+    if (range === '7D') dateLimit.setDate(dateLimit.getDate() - 7)
+    else if (range === '30D') dateLimit.setDate(dateLimit.getDate() - 30)
+    else if (range === '6M') dateLimit.setMonth(dateLimit.getMonth() - 6)
+
+    const limitString = dateLimit.toISOString().split('T')[0]
+    return allLogs.filter(log => log.log_date >= limitString)
+  }
+
+  const chartLogs = getFilteredChartLogs()
+  const convertedAllValues = allLogs.map(l => convertToDisplay(l.weight, l.unit))
 
   const getStats = () => {
-    if (convertedValues.length === 0) return { net: 0, avg: 0, lowest: 0, velocity: 0, whatsLeft: 0 }
+    if (convertedAllValues.length === 0) {
+      return { 
+        avgWeight: 0, weeklyLoss: 0, net: 0, whatsLeft: 0,
+        estM1: 'N/A', estM2: 'N/A', estM3: 'N/A'
+      }
+    }
     
-    const first = convertedValues[0]
-    const latest = convertedValues[convertedValues.length - 1]
-    
-    const rawLatestEntry = logs[logs.length - 1]
-    let latestInKg = rawLatestEntry.weight
-    if (rawLatestEntry.unit === 'lb') latestInKg = rawLatestEntry.weight / 2.20462
-
-    const remainingKg = latestInKg - TARGET_KG
-    const whatsLeft = unit === 'lb' ? remainingKg * 2.20462 : remainingKg
-    
+    const first = convertedAllValues[0]
+    const latest = convertedAllValues[convertedAllValues.length - 1]
     const net = latest - first
-    const lowest = Math.min(...convertedValues)
-    const recentEntries = convertedValues.slice(-7)
-    const avg = recentEntries.reduce((a, b) => a + b, 0) / recentEntries.length
 
-    let velocity = 0
-    if (logs.length > 1) {
-      const d1 = new Date(logs[0].log_date)
-      const d2 = new Date(logs[logs.length - 1].log_date)
+    // 1. 7-Day Moving Average
+    const recentEntries = convertedAllValues.slice(-7)
+    const avgWeight = recentEntries.reduce((a, b) => a + b, 0) / recentEntries.length
+
+    // 2. Weekly Weight Loss (Pace calculation based on full timeline)
+    let weeklyLoss = 0
+    if (allLogs.length > 1) {
+      const d1 = new Date(allLogs[0].log_date)
+      const d2 = new Date(allLogs[allLogs.length - 1].log_date)
       const weeksDiff = (d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24 * 7)
-      velocity = weeksDiff > 0 ? net / weeksDiff : 0
+      weeklyLoss = weeksDiff > 0 ? (net / weeksDiff) : 0
     }
 
-    return { net, avg, lowest, velocity, whatsLeft }
+    // 3. What's Left
+    const targetMilestone = unit === 'lb' ? TARGET_LB : TARGET_KG
+    const whatsLeft = latest - targetMilestone
+
+    // 4. Milestone Projections (74k, 72k, 69k or their lb equivalents)
+    const milestones = unit === 'lb' 
+      ? [74 * 2.20462, 72 * 2.20462, 69 * 2.20462] 
+      : [74, 72, 69]
+
+    const calculateEstDate = (targetValue: number) => {
+      if (avgWeight <= targetValue) return 'HIT'
+      // If weeklyLoss is positive or zero, it means trend is flat or gaining weight
+      if (weeklyLoss >= 0) return '—' 
+      
+      const remaining = avgWeight - targetValue
+      const weeksNeeded = remaining / Math.abs(weeklyLoss)
+      const daysNeeded = Math.ceil(weeksNeeded * 7)
+      
+      const estDate = new Date()
+      estDate.setDate(estDate.getDate() + daysNeeded)
+      return estDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    }
+
+    return {
+      avgWeight,
+      weeklyLoss,
+      net,
+      whatsLeft,
+      estM1: calculateEstDate(milestones[0]),
+      estM2: calculateEstDate(milestones[1]),
+      estM3: calculateEstDate(milestones[2])
+    }
   }
 
   const stats = getStats()
 
-  const chartData = logs.map(log => ({
+  const chartData = chartLogs.map(log => ({
     date: new Date(log.log_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     value: parseFloat(convertToDisplay(log.weight, log.unit).toFixed(1))
   }))
@@ -152,11 +192,10 @@ function WeightPageContent() {
         </div>
 
         {/* CONTAINER DISPLAY PANEL CARD */}
-        <div className="bg-slate-900/10 border border-slate-900 rounded-[2rem] p-6 mb-6 h-72 shadow-2xl relative flex flex-col justify-end">
+        <div className="bg-slate-900/10 border border-slate-900 rounded-[2rem] p-6 mb-6 h-80 shadow-2xl relative flex flex-col justify-end">
           
-          {/* INTEGRATED HEADLESS ACTION CONTROLS ROW */}
+          {/* ACTION CONTROLS ROW */}
           <div className="absolute top-4 left-6 right-6 flex justify-between items-center z-10">
-            {/* Left aligned View Mode Tabs */}
             <div className="flex bg-black/60 rounded-lg p-0.5 border border-slate-900">
               {(['chart', 'stats'] as const).map((t) => (
                 <button
@@ -169,23 +208,24 @@ function WeightPageContent() {
               ))}
             </div>
 
-            {/* Right aligned Time range options */}
-            <div className="flex gap-1">
-              {(['7D', '30D', '6M'] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRange(r)}
-                  className={`text-[8px] font-black px-2 py-1 rounded border ${range === r ? 'border-blue-500 text-blue-500 bg-blue-950/10' : 'border-slate-900 text-slate-600'}`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
+            {activeTab === 'chart' && (
+              <div className="flex gap-1 animate-in fade-in duration-100">
+                {(['7D', '30D', '6M'] as const).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRange(r)}
+                    className={`text-[8px] font-black px-2 py-1 rounded border ${range === r ? 'border-blue-500 text-blue-500 bg-blue-950/10' : 'border-slate-900 text-slate-600'}`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {activeTab === 'chart' ? (
             /* CHART VIEW */
-            <div className="w-full h-[78%]">
+            <div className="w-full h-[75%]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
@@ -200,51 +240,51 @@ function WeightPageContent() {
               </ResponsiveContainer>
             </div>
           ) : (
-            /* DYNAMIC STATS PANEL VIEW */
-            <div className="w-full h-[78%] flex flex-col justify-between pt-2">
-              {/* Highlight Target Row */}
-              <div className="bg-blue-950/20 border border-blue-900/30 p-2.5 rounded-xl flex justify-between items-center">
-                <span className="text-[8px] font-black uppercase text-blue-400 tracking-wider">What's Left (Goal: 69kg)</span>
-                <span className={`text-base font-black italic tracking-tight ${stats.whatsLeft <= 0 ? 'text-emerald-400' : 'text-blue-500'}`}>
-                  {stats.whatsLeft <= 0 ? 'GOAL HIT' : `${stats.whatsLeft.toFixed(1)} ${unit}`}
+            /* SINGLE COLUMN STATS VIEW WITH PROJECTIONS COLLAPSED UNDER WHAT'S LEFT */
+            <div className="w-full h-[82%] flex flex-col justify-between pt-6 pr-2 overflow-y-auto custom-scrollbar">
+              <div className="flex justify-between items-center border-b border-slate-900/40 pb-1.5">
+                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">7-Day Avg Weight</span>
+                <span className="text-sm font-black italic tracking-tight text-slate-200">
+                  {stats.avgWeight.toFixed(1)} <span className="text-[9px] uppercase not-italic font-bold text-slate-500">{unit}</span>
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center border-b border-slate-900/40 pb-1.5">
+                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Weekly Weight Loss</span>
+                <span className={`text-sm font-black italic tracking-tight ${stats.weeklyLoss < 0 ? 'text-emerald-500' : stats.weeklyLoss > 0 ? 'text-blue-500' : 'text-slate-400'}`}>
+                  {stats.weeklyLoss < 0 ? `-${Math.abs(stats.weeklyLoss).toFixed(1)}` : stats.weeklyLoss > 0 ? `+${stats.weeklyLoss.toFixed(1)}` : '0.0'}{' '}
+                  <span className="text-[9px] uppercase not-italic font-bold text-slate-500">{unit}/wk</span>
                 </span>
               </div>
 
-              {/* Underlying Data Parameters */}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-left">
-                <div>
-                  <span className="text-[8px] font-black uppercase text-slate-600 tracking-wider block">Net Progress</span>
-                  <span className={`text-lg font-black italic tracking-tight ${stats.net < 0 ? 'text-emerald-500' : stats.net > 0 ? 'text-blue-500' : 'text-slate-400'}`}>
-                    {stats.net > 0 ? `+${stats.net.toFixed(1)}` : stats.net.toFixed(1)} <span className="text-[9px] uppercase not-italic font-bold">{unit}</span>
-                  </span>
-                </div>
-                
-                <div>
-                  <span className="text-[8px] font-black uppercase text-slate-600 tracking-wider block">7-Day Average</span>
-                  <span className="text-lg font-black italic tracking-tight text-slate-200">
-                    {stats.avg.toFixed(1)} <span className="text-[9px] uppercase not-italic font-bold">{unit}</span>
-                  </span>
-                </div>
+              <div className="flex justify-between items-center border-b border-slate-900/40 pb-1.5">
+                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Net Progress</span>
+                <span className={`text-sm font-black italic tracking-tight ${stats.net < 0 ? 'text-emerald-500' : stats.net > 0 ? 'text-blue-500' : 'text-slate-400'}`}>
+                  {stats.net > 0 ? `+${stats.net.toFixed(1)}` : stats.net.toFixed(1)} <span className="text-[9px] uppercase not-italic font-bold text-slate-500">{unit}</span>
+                </span>
+              </div>
 
-                <div className="border-t border-slate-900 pt-1">
-                  <span className="text-[8px] font-black uppercase text-slate-600 tracking-wider block">Lowest Hit</span>
-                  <span className="text-lg font-black italic tracking-tight text-blue-500">
-                    {stats.lowest.toFixed(1)} <span className="text-[9px] uppercase not-italic font-bold">{unit}</span>
+              <div className="flex justify-between items-start pt-0.5">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">
+                    What's Left (Goal {unit === 'lb' ? '152.1lb' : '69kg'})
+                  </span>
+                  {/* Milestone projection text strings render elegantly right here underneath */}
+                  <span className="text-[8px] font-black tracking-tight text-slate-600 block mt-1 leading-none">
+                    PROJECTIONS — {unit === 'lb' ? '163lb' : '74kg'}: <span className="text-blue-500 font-mono text-[9px] mr-2">{stats.estM1}</span> 
+                    {unit === 'lb' ? '159lb' : '72kg'}: <span className="text-blue-500 font-mono text-[9px] mr-2">{stats.estM2}</span> 
+                    {unit === 'lb' ? '152lb' : '69kg'}: <span className="text-blue-500 font-mono text-[9px]">{stats.estM3}</span>
                   </span>
                 </div>
-
-                <div className="border-t border-slate-900 pt-1">
-                  <span className="text-[8px] font-black uppercase text-slate-600 tracking-wider block">Weekly Velocity</span>
-                  <span className="text-lg font-black italic tracking-tight text-slate-400">
-                    {stats.velocity > 0 ? `+${stats.velocity.toFixed(1)}` : stats.velocity.toFixed(1)} <span className="text-[8px] uppercase not-italic font-bold">{unit}/Wk</span>
-                  </span>
-                </div>
+                <span className={`text-sm font-black italic tracking-tight ${stats.whatsLeft <= 0 ? 'text-emerald-400' : 'text-blue-500'}`}>
+                  {stats.whatsLeft <= 0 ? 'HIT' : `${stats.whatsLeft.toFixed(1)} ${unit}`}
+                </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Manual Input Core */}
+        {/* Input Block */}
         <div className="bg-slate-900/40 border border-slate-900 p-8 rounded-[2.5rem] space-y-6">
           <div className="text-center">
             <label className="text-[10px] font-black uppercase text-slate-600 mb-2 block tracking-widest">

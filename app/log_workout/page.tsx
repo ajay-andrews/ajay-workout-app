@@ -220,10 +220,9 @@ function LogWorkoutForm() {
   return (
     <div className="bg-black min-h-screen w-full flex justify-center p-4 sm:p-6 font-sans text-slate-100">
       <div className="w-full max-w-md flex flex-col pt-4">
-        
         <div className="mb-8">
-          <Link href="/workout_history" className="text-blue-500 font-black text-[10px] uppercase tracking-widest hover:text-blue-400 inline-block active:scale-95 transition-all">
-            ← Back to History
+          <Link href="/" className="text-blue-500 font-black text-[10px] uppercase tracking-widest hover:text-blue-400 inline-block active:scale-95 transition-all">
+            ← HUB
           </Link>
         </div>
         
